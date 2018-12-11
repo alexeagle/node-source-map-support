@@ -1,7 +1,7 @@
 {
-  "name": "source-map-support",
+  "name": "@bazel/source-map-support",
   "description": "Fixes stack traces for files with source maps",
-  "version": "0.5.9",
+  "version": "0.5.9-b",
   "main": "./source-map-support.js",
   "scripts": {
     "build": "node build.js",

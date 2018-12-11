@@ -152,6 +152,7 @@ function retrieveSourceMapURL(source) {
 // JSON object (ie, it must be a valid argument to the SourceMapConsumer
 // constructor).
 var retrieveSourceMap = handlerExec(retrieveMapHandlers);
+var wd = process.env['BUILD_WORKING_DIRECTORY'];
 retrieveMapHandlers.push(function(source) {
   var sourceMappingURL = retrieveSourceMapURL(source);
   if (!sourceMappingURL) return null;
@@ -162,6 +163,13 @@ retrieveMapHandlers.push(function(source) {
     // Support source map URL as a data url
     var rawData = sourceMappingURL.slice(sourceMappingURL.indexOf(',') + 1);
     sourceMapData = bufferFrom(rawData, "base64").toString();
+    // Override the sourceRoot because under Bazel, the output directory
+    // is not nested under the sources (it might even be on a remote worker)
+    // and so the relative path between them is unpredictable.
+    if (wd) {
+      sourceMapData = JSON.parse(sourceMapData);
+      sourceMapData['sourceRoot'] = wd;
+    }
     sourceMappingURL = source;
   } else {
     // Support source map URLs relative to the source URL
