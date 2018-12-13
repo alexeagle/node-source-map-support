@@ -152,7 +152,6 @@ function retrieveSourceMapURL(source) {
 // JSON object (ie, it must be a valid argument to the SourceMapConsumer
 // constructor).
 var retrieveSourceMap = handlerExec(retrieveMapHandlers);
-var wd = process.env['BUILD_WORKING_DIRECTORY'];
 retrieveMapHandlers.push(function(source) {
   var sourceMappingURL = retrieveSourceMapURL(source);
   if (!sourceMappingURL) return null;
@@ -163,13 +162,14 @@ retrieveMapHandlers.push(function(source) {
     // Support source map URL as a data url
     var rawData = sourceMappingURL.slice(sourceMappingURL.indexOf(',') + 1);
     sourceMapData = bufferFrom(rawData, "base64").toString();
-    // Override the sourceRoot because under Bazel, the output directory
-    // is not nested under the sources (it might even be on a remote worker)
-    // and so the relative path between them is unpredictable.
-    if (wd) {
-      sourceMapData = JSON.parse(sourceMapData);
-      sourceMapData['sourceRoot'] = wd;
-    }
+
+    // Just make '/' the sourcemap sourceRoot so that the paths in the
+    // stack is workspace relative(with a leading '/' that will be removed
+    // below in `mapSourcePosition`). This assumes a compiler like TypeScript
+    // is setup to produce the workspace relative paths in the URL.
+    sourceMapData = JSON.parse(sourceMapData);
+    sourceMapData['sourceRoot'] = '/';
+
     sourceMappingURL = source;
   } else {
     // Support source map URLs relative to the source URL
@@ -187,6 +187,7 @@ retrieveMapHandlers.push(function(source) {
   };
 });
 
+var RUNFILES = process.env['RUNFILES'];
 function mapSourcePosition(position) {
   var sourceMap = sourceMapCache[position.source];
   if (!sourceMap) {
@@ -229,8 +230,30 @@ function mapSourcePosition(position) {
     if (originalPosition.source !== null) {
       originalPosition.source = supportRelativeURL(
         sourceMap.url, originalPosition.source);
+
+      // Remove the '/' from the paths so that what's left on the stack trace
+      // is just a relative path.
+      if (originalPosition.source.startsWith('/')) {
+        originalPosition.source = originalPosition.source.slice(1);
+      }
+
+      if (originalPosition.source.startsWith('/')) {
+        originalPosition.source = originalPosition.source.slice(1);
+      }
       return originalPosition;
     }
+  } else if (RUNFILES && position.source.startsWith(RUNFILES)) {
+    // Sourcemap not found. Still remove the RUNFILES+Bazel workspace prefix
+    // so that only the workspace relative path is left behind.
+
+    // Skip the RUNFILES
+    var source = position.source.slice(RUNFILES.length);
+
+    // Skip the bazel workspace name.
+    var pos = source.indexOf('/', 1);
+    source = source.slice(pos + 1);
+
+    position.source = source;
   }
 
   return position;
